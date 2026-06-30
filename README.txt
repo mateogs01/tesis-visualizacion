@@ -1,7 +1,6 @@
 ==============================================================================
 Visualizacion del Mapa Interactivo
 ==============================================================================
-
 Para ejecutar el mapa localmente:
     1. Ejecutar en la terminal:
         python3 -m http.server
@@ -11,7 +10,11 @@ Para ejecutar el mapa localmente:
 ==============================================================================
 Graficos Estadisticos Interactivos
 ==============================================================================
-Dependencias necesarias: dash, plotly
+Dependencias necesarias:
+    python = 3.12
+    plotly = 6.5.1
+    dash = 4.1.0
+    dash_bootstrap_components = 2.0.4
 
 Para ejecutar los graficos de plotly localmente:
     1. Ejecutar en la terminal con python y las dependencias necesarias:

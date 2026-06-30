@@ -1,5 +1,5 @@
 // ── map init ───────────────────────────────────────────────────────────────
-var map = L.map("map",{attributionControl: false, zoomSnap: 0.1}).setView([0, 0], 10, ); // temp center, updated after data loads
+var map = L.map("map",{attributionControl: false, zoomSnap: 0.1}).setView([0, 0], 10, );
 
 var myAttrControl = L.control.attribution().addTo(map);
 myAttrControl.setPrefix('<a href="https://leafletjs.com/">Leaflet</a>');
@@ -11,21 +11,22 @@ L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png
     maxZoom: 19
 }).addTo(map);
 
-// ── state ──────────────────────────────────────────────────────────────────https://stackoverflow.com/questions
+// ── state ──────────────────────────────────────────────────────────────────
 let CLUSTERS  = [];
 let RANGES    = {};
 let COL_NAMES = [];
 let CLUSTER_ALIAS = {};
-let edgesData = {};
+let EDGES_DATA = {};
 let HULLS     = {};
 
 let clusterType = "points";
 let networkActive = "NSG";
-let colorVar = "route_count"; //"select";
+let colorVar = "select";
 let colormap = "Viridis";
 let colormapMinVal = "range";
 let colormapMaxVal = "range";
-let excludeOOR = false;
+let excludeOORmin = false;
+let excludeOORmax = false;
 let logColor = false;
 let sqrtColor = false;
 let sizeVar = "select";
@@ -33,11 +34,50 @@ let sizeVar = "select";
 const clusterLayer = L.layerGroup().addTo(map);
 const networkLayer = L.layerGroup().addTo(map);
 
-let activeTooltip = null;
+
+// ── variable selector ──────────────────────────────────────────────────────
+const CLUSTER_SELECTION = {
+    "points": "Puntos",
+    "hulls" : "Cápsulas Convexas",
+    "hullsWithStops" : "Cápsulas Convexas y Paradas",
+};
+
+const NETWORK_SELECTION = {
+    "NSG": "Red de Conectividad Directa",
+    "NSG_trips": "Red de Conectividad Directa - Servicios",
+    "CG" : "Red de Conectividad Completa (Puede ser muy lenta)"
+};
+
+const COLORMAP_SELECTION = ["viridis", "Blues", "Greys", "Reds", "Spectral",
+    "custom1", "custom2", "custom3", "custom3r", "custom4", "custom4r", "custom5", "custom6", "custom7",
+    "custom8", "custom9", "custom10", "custom11", "custom12", "custom13"]
+
+const CUSTOM_COLORMAP = {
+    "custom1": chroma.scale(["#f7f490", "ef9b7d"]).mode('lrgb'),
+    "custom2": chroma.scale(["#f7f490", "ed571f"]).mode('lrgb'),
+    "custom3": chroma.scale(["#bc97f8", "#93e5f1", "#caf679", "#f7f490", "#ef9b7d"] ).mode('lrgb'),
+    "custom3r": chroma.scale(["#ef9b7d", "#f7f490", "#caf679", "#93e5f1", "#bc97f8"] ).mode('lrgb'),
+    "custom4": chroma.scale(["#8342e2", "#46bcdc", "#9ed23c", "#facb0e", "#ed571f"] ).mode('lrgb'),
+    "custom4r": chroma.scale(["#ed571f", "#facb0e", "#9ed23c","#46bcdc" , "#8342e2"] ).mode('lrgb'),
+    "custom5": chroma.scale(["caf679", "#f7f490", "#ef9b7d"] ).mode('lrgb'),
+    "custom6": chroma.scale(["#bc97f8", "#93e5f1", "#caf679"] ).mode('lrgb'),
+    "custom7": chroma.scale(["#9ed23c", "#facb0e", "#ed571f"] ).mode('lrgb'),
+    "custom8": chroma.scale(["#485a60", "#8342e2", "#9ed23c", "#facb0e"] ).mode('lrgb'),
+    "custom8r": chroma.scale(["#facb0e", "#9ed23c", "#8342e2", "#485a60"] ).mode('lrgb'),
+    "custom9": chroma.scale(["#8342e2", "#f7f490"] ).mode('lch'),
+    "custom9r": chroma.scale(["#f7f490", "#8342e2"] ).mode('lch'),
+    "custom10": chroma.scale(["#46bcdc", "#9ed23c", "#facb0e"] ).mode('lrgb'), 
+    "custom11": chroma.scale(["#485a60", "#ed571f", "#f7f490"] ).mode('lch'), 
+    "custom12": chroma.scale(["#485a60", "#ed571f", "#f7f490"] ).mode('lrgb'), 
+    "custom13": chroma.scale(["#8342e2", "#46bcdc", "#9ed23c"]).mode('hsl')
+};
+
+let VARIABLE_SELECTIONS;
+let LABEL_MAP;
 
 // ── color helper ───────────────────────────────────────────────────────────
 function getColor(col, value) {
-    if (excludeOOR & ((value>colormapMaxVal) | (value<colormapMinVal))) {
+    if ((excludeOORmax & (value>colormapMaxVal)) | (excludeOORmin & (value<colormapMinVal))) {
         return "#00000000";
     }
     let [mn, mx] = RANGES[col];
@@ -85,16 +125,6 @@ function buildTooltip(c) {
     };
     
     return res;
-    const old = `
-        <h2 style="margin: 4px 0;">Cluster ${c.cluster_800}</h2>
-        <b>Lat:</b> ${c.cent_lat.toFixed(4)} &nbsp;<b>Lon:</b> ${c.cent_lon.toFixed(4)}<br/>
-        <b>Paradas:</b> ${c.stop_count} &nbsp;<b>Rutas:</b> ${c.route_count} &nbsp;<b>Servicios:</b> ${c.trip_count}
-        <b>Rutas Rápidas:</b> ${c.fast_routes} &nbsp;<b>Terminales:</b> ${c.terminals_count}
-        <h3 style="margin: 4px 0 0 4px;">Red Next Stop de Clusters</h3>
-        <b>PageRank:</b> ${c.NSG_pagerank.toFixed(4)} &nbsp;<b>Betweenness:</b> ${c.NSG_bet_cent.toFixed(4)}
-        <h3 style="margin: 4px 0 0 4px;">Red Completa de Clusters</h3>
-        <b>PageRank:</b> ${c.CG_pagerank.toFixed(4)} &nbsp;<b>Betweenness:</b> ${c.CG_bet_cent.toFixed(4)}
-    `;
 }
 
 // ── render clusters ────────────────────────────────────────────────────────
@@ -102,18 +132,17 @@ function renderClusters() {
     map.fire('click');
     clusterLayer.clearLayers();
 
-//    if (map.getZoom() > 12) return;
     if (clusterType == "hulls" || clusterType == "hullsWithStops") {
         let i = 0;
         HULLS.forEach(function(cluster) {
             const hullLayer = L.layerGroup().addTo(clusterLayer);
-            const color  = colorVar=="select" ?  "lightslategray" : getColor(colorVar, CLUSTERS[i][colorVar]);
+            const color = colorVar=="select" ?  "lightslategray" : getColor(colorVar, CLUSTERS[i][colorVar]);
             const hull = L.polygon(cluster["hull"], {
                 color: color,
                 fillColor: color,
-                fillOpacity:0.7,
+                fillOpacity:0.5,
                 weight: 3,
-                smoothFactor: 1 // antes 5
+                smoothFactor: 3 // antes 5
             });
             const popup = L.popup({className: "custom-tooltip",
                                     content:buildTooltip(CLUSTERS[i]),
@@ -123,7 +152,6 @@ function renderClusters() {
 
             if (clusterType == "hullsWithStops") {
                 cluster["points"].forEach(function(stop) {
-    //                const circle = L.rectangle([[stop[0]-0.0002,stop[1]-0.0002], [stop[0]+0.0002,stop[1]+0.0002]], {
                     const circle = L.circle(stop, {
                         fillColor: "black",
                         fillOpacity: 1,
@@ -155,14 +183,12 @@ function renderClusters() {
     updateColorBar();
 }
 
-// ── polylines ──────────────────────────────────────────────────────────────
+// ── Edges ───────────────────────────────────────────────────────────────────
 function renderEdges() {
     networkLayer.clearLayers();
-    //const nsgLayer = L.layerGroup().addTo(map);
-    //const cgLayer  = L.layerGroup().addTo(map);
     if (networkActive == "select") return;
     
-    let edges = edgesData[networkActive];
+    let edges = EDGES_DATA[networkActive];
     const max_d = Math.max.apply(Math,Object.keys(edges).map(Number));
     const min_d = Math.min.apply(Math,Object.keys(edges).map(Number));
 
@@ -180,7 +206,7 @@ function renderEdges() {
             }).bindPopup(popup).addTo(networkLayer);
         })
     } else if (networkActive == "CG") {
-        Object.entries(edgesData.CG).forEach(([d, segments]) => {
+        Object.entries(EDGES_DATA.CG).forEach(([d, segments]) => {
             var alpha = (Number(d))/25;
             L.polyline(segments, {
                 color:  `rgb(${1-alpha},${1-alpha},${1-alpha})`,
@@ -204,7 +230,7 @@ function updateColorBar() {
             background: "white", padding: "8px 14px",
             borderRadius: "6px", boxShadow: "0 0 8px rgba(0,0,0,0.25)",
             fontSize: fontsize, textAlign: "center", minWidth: "200px",
-            pointerEvents: "none"
+            pointerEvents: "none", //transform:"translateX(50%)"
         });
         document.body.appendChild(el);
     }
@@ -227,7 +253,6 @@ function updateColorBar() {
         colors = chroma.scale(colormap).colors(steps);
     }
     var gradient = `linear-gradient(to right, ${colors.join(",")})`;
-    //`linear_gradient(#8342e2 25%, #4580de 25%, #4580de 50%, #43d99b 50%, #43d99b 75%, #9ed23c 75%, #9ed23c)`
     el.innerHTML =
         `<strong>${colorVar ? LABEL_MAP[colorVar] : ""}</strong><br>
         <div style="background:${gradient}; width:350px; height:12px; border-radius:3px;"></div>
@@ -247,63 +272,8 @@ function updateColorBar() {
             </tbody>
           </table>
         </div>`;
-        
-    /*
-    <div style="display:flex; justify-content:space-between; width:250px;">
-        <span>${fmt(mn)}</span>
-        <span>${fmt(mid)}</span>
-        <span>${fmt(mx)}</span>
-    </div>
-    */
 }
 
-// ── variable selector ──────────────────────────────────────────────────────
-const CLUSTER_SELECTION = {
-    "points": "Puntos",
-    "hulls" : "Cápsulas Convexas",
-    "hullsWithStops" : "Cápsulas Convexas y Paradas",
-};
-
-const NETWORK_SELECTION = {
-    "NSG": "Red Next Stop de Clusters",
-    "NSG_trips": "NSG pesado por servicios",
-    "NSG_OFR": "NSG solo para rutas rápidas",
-    "NSG_NFR": "NSG sin rutas rápidas",
-    "CG" : "Red Completa de Clusters (Puede ser muy lenta)"
-};
-
-const COLORMAP_SELECTION = ["viridis", "Blues", "Greys", "Reds", "Spectral",
-    "custom1", "custom2", "custom3", "custom3r", "custom4", "custom4r", "custom5", "custom6", "custom7",
-    "custom8", "custom9", "custom10", "custom11", "custom12", "custom13"]
-
-const CUSTOM_COLORMAP = {
-    "custom1": chroma.scale(["#f7f490", "ef9b7d"]).mode('lrgb'),
-    "custom2": chroma.scale(["#f7f490", "ed571f"]).mode('lrgb'),
-    "custom3": chroma.scale(["#bc97f8", "#93e5f1", "#caf679", "#f7f490", "#ef9b7d"] ).mode('lrgb'),
-    "custom3r": chroma.scale(["#ef9b7d", "#f7f490", "#caf679", "#93e5f1", "#bc97f8"] ).mode('lrgb'),
-    "custom4": chroma.scale(["#8342e2", "#46bcdc", "#9ed23c", "#facb0e", "#ed571f"] ).mode('lrgb'),
-    "custom4r": chroma.scale(["#ed571f", "#facb0e", "#9ed23c","#46bcdc" , "#8342e2"] ).mode('lrgb'),
-    "custom5": chroma.scale(["caf679", "#f7f490", "#ef9b7d"] ).mode('lrgb'),
-    "custom6": chroma.scale(["#bc97f8", "#93e5f1", "#caf679"] ).mode('lrgb'),
-    "custom7": chroma.scale(["#9ed23c", "#facb0e", "#ed571f"] ).mode('lrgb'),
-    "custom8": chroma.scale(["#485a60", "#8342e2", "#9ed23c", "#facb0e"] ).mode('lrgb'),
-    "custom8r": chroma.scale(["#facb0e", "#9ed23c", "#8342e2", "#485a60"] ).mode('lrgb'),
-    "custom9": chroma.scale(["#8342e2", "#f7f490"] ).mode('lch'),
-    "custom9r": chroma.scale(["#f7f490", "#8342e2"] ).mode('lch'),
-    "custom10": chroma.scale(["#46bcdc", "#9ed23c", "#facb0e"] ).mode('lrgb'), 
-    "custom11": chroma.scale(["#485a60", "#ed571f", "#f7f490"] ).mode('lch'), 
-    "custom12": chroma.scale(["#485a60", "#ed571f", "#f7f490"] ).mode('lrgb'), 
-    "custom13": chroma.scale(["#8342e2", "#46bcdc", "#9ed23c"]).mode('hsl')
-};
-/*
-const COLORMAP_SELECTION = ['OrRd', 'PuBu', 'BuPu', 'Oranges', 'BuGn', 'YlOrBr', 'YlGn', 'Reds',
-    'RdPu', 'Greens', 'YlGnBu', 'Purples', 'GnBu', 'Greys', 'YlOrRd', 'PuRd',
-    'Blues', 'PuBuGn', 'Viridis', 'Spectral', 'RdYlGn', 'RdBu', 'PiYG', 'PRGn',
-    'RdYlBu', 'BrBG', 'RdGy', 'PuOr', ["#f7f490", "ef9b7d"]]
-*/
-
-let VARIABLE_SELECTIONS;
-let LABEL_MAP;
 
 
 function makeNullOption(currentVar) {
@@ -444,29 +414,89 @@ function buildColorBarSelector() {
         });
     }, 0);
 
-    const change_val  = document.createElement("div");
     
     const min_val_label  = document.createElement("label");
     min_val_label.innerHTML = "<strong>Min:</strong>";
     const min_val  = document.createElement("input");
     min_val.size = 3;
 
+    const excludeOORmin_label  = document.createElement("label");
+    excludeOORmin_label.innerHTML = "<strong>Excluir:</strong>";
+    const excludeOORmin_checkbox  = document.createElement("input");
+    excludeOORmin_checkbox.type = "checkbox";
+    excludeOORmin_checkbox.addEventListener('change', function() {
+        if (this.checked) {
+            excludeOORmin = true;
+        } else {
+            excludeOORmin = false;
+        }
+    });
+
     const max_val_label  = document.createElement("label");
     max_val_label.innerHTML = "<strong>Max:</strong>";
     const max_val  = document.createElement("input");
     max_val.size = 3;
 
-    const excludeOOR_label  = document.createElement("label");
-    excludeOOR_label.innerHTML = "<strong>Excluir:</strong>";
-    const excludeOOR_checkbox  = document.createElement("input");
-    excludeOOR_checkbox.type = "checkbox";
-    excludeOOR_checkbox.addEventListener('change', function() {
+    const excludeOORmax_label  = document.createElement("label");
+    excludeOORmax_label.innerHTML = "<strong>Excluir:</strong>";
+    const excludeOORmax_checkbox  = document.createElement("input");
+    excludeOORmax_checkbox.type = "checkbox";
+    excludeOORmax_checkbox.addEventListener('change', function() {
         if (this.checked) {
-            excludeOOR = true;
+            excludeOORmax = true;
         } else {
-            excludeOOR = false;
+            excludeOORmax = false;
         }
     });
+    
+
+    const scale_label = document.createElement("label");
+    scale_label.innerHTML = "<strong>Escala:</strong>";
+    
+    const scale_unif_val = document.createElement("input");
+    const scale_log_val = document.createElement("input");
+    const scale_sqrt_val = document.createElement("input");
+    
+    scale_unif_val.type = "radio";
+    scale_log_val.type = "radio";
+    scale_sqrt_val.type = "radio";
+    
+    scale_unif_val.name = "scale";
+    scale_log_val.name = "scale";
+    scale_sqrt_val.name = "scale";
+    
+    scale_unif_val.value = "unif";
+    scale_log_val.value = "log";
+    scale_sqrt_val.value = "sqrt";
+    
+    scale_unif_val.checked = true;
+    
+    function updateScaleVariables() {
+        logColor = scale_log_val.checked;
+        sqrtColor = scale_sqrt_val.checked;
+    }
+    
+    scale_unif_val.addEventListener("change", updateScaleVariables);
+    scale_log_val.addEventListener("change", updateScaleVariables);
+    scale_sqrt_val.addEventListener("change", updateScaleVariables);
+    
+   
+    const unif_label = document.createElement("label");
+    unif_label.textContent = "Uniforme";
+    const log_label = document.createElement("label");
+    log_label.textContent = "Logarítmica";
+    const sqrt_label = document.createElement("label");
+    sqrt_label.textContent = "Raíz Cuadrada";
+    
+
+    
+    const reset  = document.createElement("BUTTON");
+    reset.innerHTML = "<strong>reset</strong>";
+    reset.addEventListener("click", e => {
+        max_val.value = "";
+        min_val.value = "";
+    }); 
+
 
     const submit  = document.createElement("BUTTON");
     submit.innerHTML = "<strong>Ok</strong>";
@@ -481,24 +511,29 @@ function buildColorBarSelector() {
         renderClusters();
     }); 
     
-    const reset  = document.createElement("BUTTON");
-    reset.innerHTML = "<strong>reset</strong>";
-    reset.addEventListener("click", e => {
-        max_val.value = "";
-        min_val.value = "";
-    }); 
+    const first_row  = document.createElement("div");
+    const second_row  = document.createElement("div");
+    const third_row  = document.createElement("div");
 
-
-    
-    change_val.append(min_val_label);       
-    change_val.append(min_val);
-    change_val.append(max_val_label);       
-    change_val.append(max_val);
-    change_val.append(reset);
-    change_val.append(excludeOOR_label);
-    change_val.append(excludeOOR_checkbox);
-    change_val.append(submit);
-    div.append(change_val);
+    first_row.append(min_val_label);       
+    first_row.append(min_val);
+    first_row.append(excludeOORmin_label);
+    first_row.append(excludeOORmin_checkbox);
+    first_row.append(max_val_label);
+    first_row.append(max_val);
+    first_row.append(excludeOORmax_label);
+    first_row.append(excludeOORmax_checkbox);
+    second_row.appendChild(scale_unif_val);
+    second_row.appendChild(unif_label);
+    second_row.appendChild(scale_log_val);
+    second_row.appendChild(log_label);
+    second_row.appendChild(scale_sqrt_val);
+    second_row.appendChild(sqrt_label);
+    third_row.append(reset);
+    third_row.append(submit);
+    div.append(first_row);
+    div.append(second_row);
+    div.append(third_row);
 
     return div;
 }   
@@ -557,29 +592,19 @@ function buildSelector() {
 }
 
 // ── data loading ───────────────────────────────────────────────────────────
-// const reduccion80 = false;
-
 async function loadData() {
     let clustersRes, metaRes, edgesRes, clusterHulls, variable_groups,
         variable_labels, cluster_alias;
-    /*if (reduccion80) {
-        [clustersRes, metaRes, edgesRes, clusterHulls] = await Promise.all([
-            fetch("cluster_800_stats_reducidos80.json"),
-            fetch("meta.json"),
-            fetch("edges_reducidos80.json"),
-            fetch("cluster_800_hulls_reducidos80.json")
-        ]);
-    } else {*/
     
     [clustersRes, metaRes, edgesRes, clusterHulls, variable_groups,
         variable_labels, cluster_alias] = await Promise.all([
-        fetch("data/cluster_800_stats.json"),
+        fetch("data/cluster_stats.json"),
         fetch("data/meta.json"),
         fetch("data/edges.json"),
-        fetch("data/cluster_800_hulls.json"),
+        fetch("data/cluster_hulls.json"),
         fetch("data/variable_groups.json"),
         fetch("data/variable_labels.json"),
-        fetch("data/cluster_800_alias.json")
+        fetch("data/cluster_alias.json")
     ]);
     //}
 
@@ -587,7 +612,7 @@ async function loadData() {
     const meta = await metaRes.json();
     RANGES    = meta.ranges;
     COL_NAMES = meta.columns;
-    edgesData = await edgesRes.json();
+    EDGES_DATA = await edgesRes.json();
     HULLS     = await clusterHulls.json();
     VARIABLE_SELECTIONS = await variable_groups.json();
     LABEL_MAP = await variable_labels.json();
