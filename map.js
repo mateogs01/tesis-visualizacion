@@ -5,7 +5,7 @@ var myAttrControl = L.control.attribution().addTo(map);
 myAttrControl.setPrefix('<a href="https://leafletjs.com/">Leaflet</a>');
 
 // dark_nolabels, light_all, light_nolabels
-L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
+L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png/?=default_public", {
     attribution: "&copy; OpenStreetMap &copy; CartoDB",
     subdomains: "abcd",
     maxZoom: 19
@@ -245,7 +245,7 @@ function updateColorBar() {
     
     const dec  = (mx < 1) ? 4 : (mx < 100) ? 2 : 0;
     const fmt  = v => v.toFixed(dec);
-    const steps  = 4;
+    const steps  = 200;
     var colors;
     if (colormap.includes("custom")) {
         colors = CUSTOM_COLORMAP[colormap].colors(steps);
