@@ -265,9 +265,9 @@ function updateColorBar() {
                 <td width="33%" align="right" style="font-size:5px; line-height:1; padding-top:0;">▌</td>
               </tr>
               <tr>
-                <td width="33%" align="left" style="font-size:${fontsize};">${fmt(mn)}</td>
-                <td width="34%" align="center style="font-size:${fontsize};">${fmt(mid)}</td>
-                <td width="33%" align="right" style="font-size:${fontsize};">${fmt(mx)}</td>
+                <td width="33%" align="left"   style="font-size:${fontsize};">${fmt(mn)}</td>
+                <td width="34%" align="center" style="font-size:${fontsize};">${fmt(mid)}</td>
+                <td width="33%" align="right"  style="font-size:${fontsize};">${fmt(mx)}</td>
               </tr>
             </tbody>
           </table>
